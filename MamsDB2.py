@@ -1,5 +1,6 @@
 import os
 import struct
+import array
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
@@ -37,12 +38,49 @@ class Mappability(object):
 
         self._lowF=BinaryFile(self._lowFN,fileAccess)
         self._highF=BinaryFile(self._highFN,fileAccess)
+        self.fasta=fasta_name
 
     def low(pos):
         return struct.unpack("B",self._lowF.readIndex(pos))
 
     def high(pos):
         return struct.unpack("B",self._highF.readIndex(pos))
+
+    @staticmethod
+    def createFromMumdexDir(mumdexDir):
+        fasta_name=""
+        with open(os.path.join(mumdexDir,"ref.txt")) as refF:
+            fasta_name=refF.readline().strip()
+
+        return Mappability(fasta_name)
+    
         
         
+class Reference(object):
+    def __init__(self,fasta_name,fileAccess="file"):
+        self._seqFN=fasta_name+".bin/ref.seq.bin"
+        self._seqF=BinaryFile(self._seqFN,fileAccess)
+        self._chrLenFN=fasta_name+".bin/ref.chr_len.bin"
+        self._chrNameFN=fasta_name+".bin/ref.chr_name.bin"
+        self.chrLen=array.array("I")
+        with open(self._chrLenFN) as chrLenF:
+            self.chrLen.fromstring(chrLenF.read())
+
+        self.chrName=[]
+        with open(self._chrNameFN) as chrNameF:
+            for line in chrNameF:
+                self.chrName.append(line.strip())
+
+        self.fasta=fasta_name
+
+    @staticmethod
+    def createFromMumdexDir(mumdexDir):
+        fasta_name=""
+        with open(os.path.join(mumdexDir,"ref.txt")) as refF:
+            fasta_name=refF.readline().strip()
+
+        return Reference(fasta_name)
+        
+    def name(self,chromIndex):
+        return self.chrName[chromIndex]
         
