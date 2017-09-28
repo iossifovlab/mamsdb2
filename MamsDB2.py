@@ -17,7 +17,14 @@ class BinaryFile(object):
             return self_.data[pos]
         elif fileAccess=="file":
             self._file.seek(pos)
-            self._file.read(1)
+            return self._file.read(1)
+
+    def readRange(start,end):
+        if fileAccess=="memory":
+            return self_.data[start:end]
+        elif fileAccess=="file":
+            self._file.seek(start)
+            return self._file.read(end-start)
 
     def close():
         if fileAccess=="memory":
@@ -66,11 +73,17 @@ class Reference(object):
         with open(self._chrLenFN) as chrLenF:
             self.chrLen.fromstring(chrLenF.read())
 
+        self.chrAbsPos=[]
+        pos=0
+        for length in self.chrLen:
+            self.chrAbsPos.append(pos)
+            pos+=length
+            
         self.chrName=[]
         with open(self._chrNameFN) as chrNameF:
             for line in chrNameF:
                 self.chrName.append(line.strip())
-
+                
         self.fasta=fasta_name
 
     @staticmethod
@@ -83,4 +96,23 @@ class Reference(object):
         
     def name(self,chromIndex):
         return self.chrName[chromIndex]
+
+    def chromToIndex(self,chromName):
+        return self.chrName.index(chromName)
+
+    def CP2APos(self,chrom,pos):
+        chromIndex=self.chromToIndex(chrom)
+        return self.chrAbsPos[chromIndex]+pos
+
+    def getSeqChrom(self,chrom,beg,end):
+        absBeg=self.CP2APos(chrom,beg)
+        absEnd=self.CP2APos(chrom,end)
+        return self._seqF.readRange(absBeg,absEnd)
+
+    def getSeqAbs(self,absBeg,absEnd):
+        return self._seqF.readRange(absBeg,absEnd)
+
+        
+
+    
         
