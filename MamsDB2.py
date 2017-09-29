@@ -59,6 +59,42 @@ class MUMFile(BinaryFile):
         for i in xrange(startIndex,endIndex):
             records.append(self.readIndex(i))
         return records
+
+    def getNumberOfMUMs(self):
+        return os.path.getsize(self.fileName)/ctypes.sizeof(MUM_CData)
+
+class Pair_CData(ctypes.Structure):
+    _fields_=[
+        ("mums_start",ctypes.c_uint64,40),
+        ("read_1_length",ctypes.c_uint64,10),
+        ("read_2_length",ctypes.c_uint64,10),
+        ("read_1_bad",ctypes.c_uint64,1),
+        ("read_2_bad",ctypes.c_uint64,1),
+        ("has_mums",ctypes.c_uint64,1),
+        ("dupe",ctypes.c_uint64,1)
+    ]
+
+class PairFile(BinaryFile):
+    def readIndex(self,index):
+        pos=ctypes.sizeof(Pair_CData)*index
+        data=Pair_CData()
+        if self.fileAccess=="memory":
+            data.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            self._file.seek(pos)
+            self._file.readinto(data)
+        
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
+
+    def getNumberOfPairs(self):
+        return os.path.getsize(self.fileName)/ctypes.sizeof(Pair_CData)
+    
             
 
 class Mappability(object):
