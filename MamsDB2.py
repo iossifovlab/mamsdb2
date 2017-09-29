@@ -1,6 +1,4 @@
-import os
-import struct
-import array
+import os,struct,array,ctypes
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
@@ -12,29 +10,56 @@ class BinaryFile(object):
             self._file.readinto(self._data)
             self._file.close()
 
-    def readIndex(pos):
-        if fileAccess=="memory":
+    def readIndex(self,pos):
+        if self.fileAccess=="memory":
             return self_.data[pos]
-        elif fileAccess=="file":
+        elif self.fileAccess=="file":
             self._file.seek(pos)
             return self._file.read(1)
 
-    def readRange(start,end):
-        if fileAccess=="memory":
+    def readRange(self,start,end):
+        if self.fileAccess=="memory":
             return self_.data[start:end]
-        elif fileAccess=="file":
+        elif self.fileAccess=="file":
             self._file.seek(start)
             return self._file.read(end-start)
 
-    def close():
-        if fileAccess=="memory":
+    def close(self):
+        if self.fileAccess=="memory":
             self._data=None
-        elif fileAccess=="file":
+        elif self.fileAccess=="file":
             self._file.close()
+
+class MUM_CData(ctypes.Structure):
+    _fields_=[
+        ("position",ctypes.c_uint64,32),
+        ("chromosome",ctypes.c_uint64,8),
+        ("offset",ctypes.c_uint64,10),
+        ("length",ctypes.c_uint64,10),
+        ("flipped",ctypes.c_uint64,1),
+        ("read_2",ctypes.c_uint64,1),
+        ("last_hit",ctypes.c_uint64,1),
+        ("touches_end",ctypes.c_uint64,1)
+    ]
+
+class MUMFile(BinaryFile):
+    def readIndex(self,index):
+        pos=ctypes.sizeof(MUM_CData)*index
+        data=MUM_CData()
+        if self.fileAccess=="memory":
+            data.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            self._file.seek(pos)
+            self._file.readinto(data)
         
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
             
-        
-    
 
 class Mappability(object):
     def __init__(self,fasta_name,fileAccess="file"):
