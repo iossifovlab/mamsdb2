@@ -1,4 +1,5 @@
 import os,struct,array,ctypes
+import bisect
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
@@ -59,11 +60,11 @@ class MUM_CData(ctypes.Structure):
 
 class MUMFile(BinaryFile):
     def readIndex(self,index):
-        pos=ctypes.sizeof(MUM_CData)*index
-        data=MUM_CData()
+        pos=ctypes.sizeof(MUM_CData)*index        
         if self.fileAccess=="memory":
-            data.from_buffer(self._data,pos)
+            data=MUM_CData.from_buffer(self._data,pos)
         elif self.fileAccess=="file":
+            data=MUM_CData()
             self._file.seek(pos)
             self._file.readinto(data)
         
@@ -92,10 +93,11 @@ class Pair_CData(ctypes.Structure):
 class PairFile(BinaryFile):
     def readIndex(self,index):
         pos=ctypes.sizeof(Pair_CData)*index
-        data=Pair_CData()
+
         if self.fileAccess=="memory":
-            data.from_buffer(self._data,pos)
+            data=Pair_CData.from_buffer(self._data,pos)
         elif self.fileAccess=="file":
+            data=Pair_CData()
             self._file.seek(pos)
             self._file.readinto(data)
         
@@ -125,10 +127,10 @@ class Index_CData(ctypes.Structure):
 class IndexFile(BinaryFile):
     def readIndex(self,index):
         pos=ctypes.sizeof(Index_CData)*index
-        data=Index_CData()
         if self.fileAccess=="memory":
-            data.from_buffer(self._data,pos)
+            data=Index_CData.from_buffer(self._data,pos)
         elif self.fileAccess=="file":
+            data=Index_CData()
             self._file.seek(pos)
             self._file.readinto(data)
         
@@ -180,12 +182,12 @@ class Mappability(object):
         return struct.unpack("B",self._highF.readIndex(pos))
 
     @staticmethod
-    def createFromMumdexDir(mumdexDir):
+    def createFromMumdexDir(mumdexDir,fileAccess="file"):
         fasta_name=""
         with open(os.path.join(mumdexDir,"ref.txt")) as refF:
             fasta_name=refF.readline().strip()
 
-        return Mappability(fasta_name)
+        return Mappability(fasta_name,fileAccess)
     
         
         
@@ -213,12 +215,12 @@ class Reference(object):
         self.fasta=fasta_name
 
     @staticmethod
-    def createFromMumdexDir(mumdexDir):
+    def createFromMumdexDir(mumdexDir,fileAccess="file"):
         fasta_name=""
         with open(os.path.join(mumdexDir,"ref.txt")) as refF:
             fasta_name=refF.readline().strip()
 
-        return Reference(fasta_name)
+        return Reference(fasta_name,fileAccess)
         
     def name(self,chromIndex):
         return self.chrName[chromIndex]
@@ -238,7 +240,181 @@ class Reference(object):
     def getSeqAbs(self,absBeg,absEnd):
         return self._seqF.readRange(absBeg,absEnd)
 
-        
 
+
+
+class MamRead:
+    def __init__(mamRead,mamsDB,pairI,readN,len,isPCRdup):
+        mamRead.mamsDB = mamsDB
+        mamRead.pairI = pairI
+        mamRead.readI = (pairI,readN)
+        mamRead.readN = readN
+        mamRead.readLen = len 
+        mamRead.isPCRdup = isPCRdup
+        mamRead.mams = []
+        mamRead.mateRead = None
+ 
+    def seq(mamRead):
+        '''
+        TODO: Implement reading gene sequences from mumdex
+        '''
+        return mamRead.mamsDB.mums.sequences(mamRead.pairI)[mamRead.readN-1]
+
+class MAM(object):
     
+    def __repr__(mam):
+        return (mam.rp,mam.ch,mam.chPos,mam.ln,mam.st).__repr__()
+
+    def __hash__(self):
+        return hash((self.rp,self.ch,self.chPos,self.ln,self.st))
+
+    def __eq__(self,other):
+        if (self.rp,self.ch,self.chPos,self.ln,self.st)==(other.rp,other.ch,other.chPos,other.ln,other.st):
+            return True
+        else:
+            return False
+
+    def __neq__(self,other):
+        return not self.__eq__(other)        
+
+    @property
+    def chBegPos(mam):
+        if mam.st == '+':
+            return mam.chPos
+        else:
+            return mam.chPos + mam.ln - 1
+
+    @property
+    def chEndPos(mam):
+        if mam.st == '+':
+            return mam.chPos + mam.ln - 1
+        else:
+            return mam.chPos
+
+    @property
+    def rBegChPos(mam):
+        if mam.st == '+':
+            return mam.chPos-mam.rp
+        else:
+            return mam.chPos + mam.ln - 1 + mam.rp
+
+    @property
+    def rEndChPos(mam):
+        if mam.st == '+':
+            return mam.chPos-mam.rp+mam.read.readLen-1
+        else:
+            return mam.chPos+mam.ln+mam.rp-mam.read.readLen
+
+    @property
+    def rBegAPos(mam):
+        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.rBegChPos)
+
+    @property
+    def rEndAPos(mam):
+        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.rEndChPos)
+    
+    @property
+    def APos(mam):
+        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.chPos)
+
+    @property
+    def seq(mam):
+        return mam.read.mamsDB.ref.getS_BL(mam.ch,mam.chPos,mam.ln)
+
         
+class MamsDB:
+    def __init__(self,mamsDBDir,fileAccess="file"):
+        self.mums=MUMFile(os.path.join(mamsDBDir,"mums.bin"),fileAccess)
+        self.pairs=PairFile(os.path.join(mamsDBDir,"pairs.bin"),fileAccess)
+        self.index=IndexFile(os.path.join(mamsDBDir,"index.bin"),fileAccess)
+        self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
+        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
+
+    def close(self):
+        self.mums.close()
+        self.pairs.close()
+        self.index.close()
+        self.ref.close()
+        self.mpb.close()
+
+    def getNumReads(self):
+        return 2*self.pairs.getNumberOfPairs()
+
+    def getNumMams(self):
+        return self.mums.getNumberOfMUMs()
+
+    def buildPair(self,mamSortI):
+        indexData=self.index.readIndex(mamSortI)
+        pair = self.pairs.readIndex(indexData.pair_index)
+        mumIndex = pair.mums_start+indexData.mum_index
+
+        read1 = MamRead(self,indexData.pair_index,1,pair.read_1_length,pair.dupe)
+        read2 = MamRead(self,indexData.pair_index,2,pair.read_2_length,pair.dupe)
+
+        read1.mateRead = read2
+        read2.mateRead = read1
+
+        theMam=None
+        # create a mam object for each mum associated with the read and link them together
+        for mIndex in xrange(pair.mums_start,self.getMumStop(indexData.pair_index)):
+
+            mum = self.mums.readIndex(mIndex)
+
+            mam = MAM()
+            mam.rp = mum.offset 
+            mam.ch = self.ref.name(mum.chromosome)
+            mam.chPos = mum.position-1
+            mam.ln = mum.length
+            mam.st = "-" if mum.flipped else '+'
+            mam.mamI = mIndex
+
+            mam.read = read2 if mum.read_2 else read1
+            mam.read.mams.append(mam)
+            if mIndex==mumIndex:
+                theMam=mam
+                            
+
+        return read1,read2,theMam
+
+    def getMams(self,chr,beg,end):
+        chromInt=self.ref.chromToIndex(chr)
+        toSearch=IndexSearch(self.index,self.mums,self.pairs)
+        startMum=MUM_CData(position=beg-150,chromosome=chromInt)
+        endMum=MUM_CData(position=end,chromosome=chromInt)
+        startIndex=bisect.bisect_left(toSearch,startMum)
+        endIndex=bisect.bisect_left(toSearch,endMum)
+
+        for i in xrange(startIndex, endIndex):
+            read1,read2,mam = self.buildPair(i)
+            yield mam
+
+
+    def low_map(self,ch,b,e=None):
+        bA = self.ref.CP2APos(ch,b)
+        if e:
+            eA =  self.ref.CP2APos(ch,e)
+        else:
+            eA = bA + 1
+            
+        return [self.mpb.low_map(i) for i in xrange(bA+1,eA+1)]
+
+    def high_map(self,ch,b,e):
+        bA = self.ref.CP2APos(ch,b)
+        if e:
+            eA =  self.ref.CP2APos(ch,e)
+        else:
+            eA = bA + 1
+            
+        return [self.mpb.high_map(i) for i in xrange(bA+1,eA+1)]
+
+    def getMumStop(self,pairIndex):
+        '''
+        Only the index of the first mum is stored in the pair data, so we must calculate the index of the last mum from the start of the next pair in the file.
+        '''
+        
+        # handle case where pair is the last pair in the file
+        if pairIndex+1 == self.pairs.getNumberOfPairs():
+            return self.mums.getNumberOfMUMs()
+        else:
+            nextPair=self.pairs.readIndex(pairIndex+1)
+            return nextPair.mums_start
