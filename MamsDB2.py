@@ -42,6 +42,21 @@ class MUM_CData(ctypes.Structure):
         ("touches_end",ctypes.c_uint64,1)
     ]
 
+    def __lt__(self,other):
+        '''
+        required for binary search
+        '''
+        if self.chromosome<other.chromosome:
+            return True
+        elif self.chromosome>other.chromosome:
+            return False
+
+        # the chromosomes are the same
+        if self.position<other.position:
+            return True
+        else:
+            return False
+
 class MUMFile(BinaryFile):
     def readIndex(self,index):
         pos=ctypes.sizeof(MUM_CData)*index
@@ -94,9 +109,59 @@ class PairFile(BinaryFile):
 
     def getNumberOfPairs(self):
         return os.path.getsize(self.fileName)/ctypes.sizeof(Pair_CData)
-    
-            
 
+
+class Index_CData(ctypes.Structure):
+    '''
+    the mum_index here is the index of the mum in the pair, not in the mum file
+    '''
+    _fields_=[
+        ("pair_index",ctypes.c_uint64,40),
+        ("mum_index",ctypes.c_uint64,11),
+        ("second_mum_index",ctypes.c_uint64,11),
+        ("filler",ctypes.c_uint64,2)
+    ]
+
+class IndexFile(BinaryFile):
+    def readIndex(self,index):
+        pos=ctypes.sizeof(Index_CData)*index
+        data=Index_CData()
+        if self.fileAccess=="memory":
+            data.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            self._file.seek(pos)
+            self._file.readinto(data)
+        
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
+
+    
+
+class IndexSearch(object):
+    '''
+    Binary Search of mums by chromosome and position. Implements a list interface so that it is compatible with the bisect method.
+    '''
+    def __init__(self,indexFile,mumFile,pairsFile):
+        self.indexFile=indexFile
+        self.mumFile=mumFile
+        self.pairsFile=pairsFile
+
+    def __len__(self):
+        return os.path.getsize(self.indexFile.fileName)/ctypes.sizeof(Index_CData)
+
+    def __getitem__(self,index):
+        '''
+        Given an index in the index file, get the mum object associated with it
+        '''
+        indexEntry=self.indexFile.readIndex(index)
+        pairsEntry=self.pairsFile.readIndex(indexEntry.pair_index)
+        return self.mumFile.readIndex(pairsEntry.mums_start+indexEntry.mum_index)
+    
 class Mappability(object):
     def __init__(self,fasta_name,fileAccess="file"):
         self._lowFN=fasta_name+".bin/map.low.bin"
