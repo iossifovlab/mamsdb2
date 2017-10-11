@@ -359,26 +359,23 @@ class Reference(object):
 
 
 class MamRead:
-    def __init__(mamRead,mamsDB,pairI,readN,len,isPCRdup):
-        mamRead.mamsDB = mamsDB
-        mamRead.pairI = pairI
-        mamRead.readI = (pairI,readN)
-        mamRead.readN = readN
-        mamRead.readLen = len 
-        mamRead.isPCRdup = isPCRdup
-        mamRead.mams = []
-        mamRead.mateRead = None
+    def __init__(self,mamsDB,pairI,readN,len,isPCRdup):
+        self.mamsDB = mamsDB
+        self.pairI = pairI
+        self.readI = (pairI,readN)
+        self.readN = readN
+        self.readLen = len 
+        self.isPCRdup = isPCRdup
+        self.mams = []
+        self.mateRead = None
  
-    def seq(mamRead):
-        '''
-        TODO: Implement reading gene sequences from mumdex
-        '''
-        return mamRead.mamsDB.mums.sequences(mamRead.pairI)[mamRead.readN-1]
+    def seq(self):
+        return self.mamsDB.getSequence(self.pairI)[self.readN-1]
 
 class MAM(object):
     
-    def __repr__(mam):
-        return (mam.rp,mam.ch,mam.chPos,mam.ln,mam.st).__repr__()
+    def __repr__(self):
+        return (self.rp,self.ch,self.chPos,self.ln,self.st).__repr__()
 
     def __hash__(self):
         return hash((self.rp,self.ch,self.chPos,self.ln,self.st))
@@ -393,48 +390,48 @@ class MAM(object):
         return not self.__eq__(other)        
 
     @property
-    def chBegPos(mam):
-        if mam.st == '+':
-            return mam.chPos
+    def chBegPos(self):
+        if self.st == '+':
+            return self.chPos
         else:
-            return mam.chPos + mam.ln - 1
+            return self.chPos + self.ln - 1
 
     @property
-    def chEndPos(mam):
-        if mam.st == '+':
-            return mam.chPos + mam.ln - 1
+    def chEndPos(self):
+        if self.st == '+':
+            return self.chPos + self.ln - 1
         else:
-            return mam.chPos
+            return self.chPos
 
     @property
-    def rBegChPos(mam):
-        if mam.st == '+':
-            return mam.chPos-mam.rp
+    def rBegChPos(self):
+        if self.st == '+':
+            return self.chPos-self.rp
         else:
-            return mam.chPos + mam.ln - 1 + mam.rp
+            return self.chPos + self.ln - 1 + self.rp
 
     @property
-    def rEndChPos(mam):
-        if mam.st == '+':
-            return mam.chPos-mam.rp+mam.read.readLen-1
+    def rEndChPos(self):
+        if self.st == '+':
+            return self.chPos-self.rp+self.read.readLen-1
         else:
-            return mam.chPos+mam.ln+mam.rp-mam.read.readLen
+            return self.chPos+self.ln+self.rp-self.read.readLen
 
     @property
-    def rBegAPos(mam):
-        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.rBegChPos)
+    def rBegAPos(self):
+        return self.read.mamsDB.ref.CP2APos(self.ch,self.rBegChPos)
 
     @property
-    def rEndAPos(mam):
-        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.rEndChPos)
+    def rEndAPos(self):
+        return self.read.mamsDB.ref.CP2APos(self.ch,self.rEndChPos)
     
     @property
-    def APos(mam):
-        return mam.read.mamsDB.ref.CP2APos(mam.ch,mam.chPos)
+    def APos(self):
+        return self.read.mamsDB.ref.CP2APos(self.ch,self.chPos)
 
     @property
-    def seq(mam):
-        return mam.read.mamsDB.ref.getS_BL(mam.ch,mam.chPos,mam.ln)
+    def seq(self):
+        return self.read.mamsDB.ref.getS_BL(self.ch,self.chPos,self.ln)
 
         
 class MamsDB:
