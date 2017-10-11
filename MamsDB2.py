@@ -1,5 +1,6 @@
 import os,struct,array,ctypes
 import bisect
+import pdb
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
@@ -163,7 +164,121 @@ class IndexSearch(object):
         indexEntry=self.indexFile.readIndex(index)
         pairsEntry=self.pairsFile.readIndex(indexEntry.pair_index)
         return self.mumFile.readIndex(pairsEntry.mums_start+indexEntry.mum_index)
+
+# Each base is stored as a 3 bit integer ingeter in the files. The integer value cooresponds to the index in the IntToBaseMap
+IntToBaseMap=["0","A","T","C","G","N","X","-","-"]
+Complement={
+    "A":"T",
+    "T":"A",
+    "C":"G",
+    "G":"C",
+    "N":"N",
+    "X":"X"
+}
+
+
+class Bases_CData(ctypes.Structure):
+    '''
+    If is_index is true then data is an integer pointing to the index where the bases are stored in the extra bases file. Otherwise the data represents a list of bases, up to 21 bases, where each base is stored as a 3 bit integer.
+    '''
+    _fields_=[
+        ("fileData",ctypes.c_uint64)
+    ]
+
+    @property
+    def is_index(self):
+        index_bit=1<<63
+        return bool(self.fileData & index_bit)
+
+    @property
+    def data(self):
+        data_bits=~(1<<63)
+        return self.fileData & data_bits
+        
+
+class BasesFile(BinaryFile):
+    def readIndex(self,index):
+        pos=ctypes.sizeof(Bases_CData)*index
+
+        if self.fileAccess=="memory":
+            data=Bases_CData.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            data=Bases_CData()
+            self._file.seek(pos)
+            self._file.readinto(data)
+        
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
+
+class ExtraBases_CData(ctypes.Structure):
+    _fields_=[("data",ctypes.c_uint64)]
+
+class ExtraBasesFile(BinaryFile):
+    def readIndex(self,index):
+        pos=ctypes.sizeof(ExtraBases_CData)*index
+
+        if self.fileAccess=="memory":
+            data=ExtraBases_CData.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            data=ExtraBases_CData()
+            self._file.seek(pos)
+            self._file.readinto(data)
+        
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
+
+class AllBases(object):
+    def __init__(self,mamsDBDir,fileAccess="file"):
+        self.bases=BasesFile(os.path.join(mamsDBDir,"bases.bin"))
+        self.extraBases=ExtraBasesFile(os.path.join(mamsDBDir,"bases.extra.bin"))
+
+    def getBases(self,pairIndex):
+        baseData=self.bases.readIndex(pairIndex)
+        if baseData.is_index:
+            self._getExtraBases(baseData.data)
+        else:
+            self._getBases(baseData.data)
+
+    def _getBases(self,data):
+        result=bytearray()
+        baseIndex=0
+        while True:
+            base=IntToBaseMap[(data >> (baseIndex * 3)) & 7]
+            if base == 'X':
+                return str(result)
+            result.append(base)
+            baseIndex+=1
+
+    def _getExtraBases(self,startIndex):        
+        result=bytearray()
+        # in the extra base file characters can potentially span accross to integers, so we must read in the characters one bit at a time.
+        base_index=startIndex
+        while True:
+            baseBits=0           
+            for bit in range(0,3):                
+                bit_index=base_index * 3 + bit
+                word_index=bit_index/64
+                bit_in_word_index=bit_index%64
+                word=self.extraBases.readIndex(word_index).data
+                baseBits |= (((word >> bit_in_word_index) & 1) << bit)
+                    
+            base=IntToBaseMap[baseBits]
+            if base == 'X':
+                return str(result)
+            result.append(base)
+            base_index+=1
     
+
 class Mappability(object):
     def __init__(self,fasta_name,fileAccess="file"):
         self._lowFN=fasta_name+".bin/map.low.bin"
@@ -329,6 +444,7 @@ class MamsDB:
         self.index=IndexFile(os.path.join(mamsDBDir,"index.bin"),fileAccess)
         self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
         self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
+        self.bases= AllBases(mamsDBDir,fileAccess)
 
     def close(self):
         self.mums.close()
@@ -418,3 +534,55 @@ class MamsDB:
         else:
             nextPair=self.pairs.readIndex(pairIndex+1)
             return nextPair.mums_start
+
+    def getSequence(self,pairIndex):
+        '''
+        given a read pair index, get the sequence data associated with each pair.
+        '''
+
+       # pdb.set_trace()
+        extra_bases=[]
+        extra_bases=self.bases.getBases(pairIndex)
+        extraBaseIndex=0
+        pair=self.pairs.readIndex(pairIndex)
+        results=[]
+
+        for readNum in range(0,2):
+            read_index=0
+            read=bytearray()
+            for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
+                mum=self.mums.readIndex(mum_index)
+                if mum.read_2 != readNum:
+                    break
+                offset=mum.offset
+                while read_index<offset:
+                    read.append(extra_bases[extraBaseIndex])
+                    extraBaseIndex+=1
+                    read_index+=1
+
+                while read_index < offset+mum.length:
+                    chrom=self.ref.name(mum.chromosome)
+                    if mum.flipped:                        
+                        mumChromPos=mum.position+offset+mum.length-read_index-1
+                        read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
+                    else:
+                        mumChrompos=mum.position+read_index-offset
+                        read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
+
+                    read_index+=1
+
+                if readNum:
+                    length=pair.read_1_length
+                else:
+                    length=pair.read_2_length
+
+                while read_index < length:
+                    read.append(extra_bases[extraBaseIndex])
+                    extraBaseIndex+=1
+                    readIndex+=1
+
+            results.append(read)
+
+        return results
+                        
+                    
