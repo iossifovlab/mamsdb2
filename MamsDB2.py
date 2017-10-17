@@ -64,7 +64,7 @@ class MUMFile(BinaryFile):
         pos=ctypes.sizeof(MUM_CData)*index        
         if self.fileAccess=="memory":
             data=MUM_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
+        elif self.fileAccess=="file":            
             data=MUM_CData()
             self._file.seek(pos)
             self._file.readinto(data)
@@ -245,9 +245,9 @@ class AllBases(object):
     def getBases(self,pairIndex):
         baseData=self.bases.readIndex(pairIndex)
         if baseData.is_index:
-            self._getExtraBases(baseData.data)
+            return self._getExtraBases(baseData.data)
         else:
-            self._getBases(baseData.data)
+            return self._getBases(baseData.data)
 
     def _getBases(self,data):
         result=bytearray()
@@ -257,7 +257,7 @@ class AllBases(object):
             if base == 'X':
                 return str(result)
             result.append(base)
-            baseIndex+=1
+            baseIndex+=1            
 
     def _getExtraBases(self,startIndex):        
         result=bytearray()
@@ -537,8 +537,6 @@ class MamsDB:
         given a read pair index, get the sequence data associated with each pair.
         '''
 
-       # pdb.set_trace()
-        extra_bases=[]
         extra_bases=self.bases.getBases(pairIndex)
         extraBaseIndex=0
         pair=self.pairs.readIndex(pairIndex)
@@ -546,11 +544,12 @@ class MamsDB:
 
         for readNum in range(0,2):
             read_index=0
+            length=0
             read=bytearray()
             for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
                 mum=self.mums.readIndex(mum_index)
                 if mum.read_2 != readNum:
-                    break
+                    continue
                 offset=mum.offset
                 while read_index<offset:
                     read.append(extra_bases[extraBaseIndex])
@@ -563,7 +562,7 @@ class MamsDB:
                         mumChromPos=mum.position+offset+mum.length-read_index-1
                         read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
                     else:
-                        mumChrompos=mum.position+read_index-offset
+                        mumChromPos=mum.position+read_index-offset
                         read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
 
                     read_index+=1
@@ -573,13 +572,14 @@ class MamsDB:
                 else:
                     length=pair.read_2_length
 
-                while read_index < length:
-                    read.append(extra_bases[extraBaseIndex])
-                    extraBaseIndex+=1
-                    readIndex+=1
+            while read_index < length:
+                read.append(extra_bases[extraBaseIndex])
+                extraBaseIndex+=1
+                read_index+=1
 
-            results.append(read)
+            results.append(str(read))
 
+            
         return results
                         
                     
