@@ -19,7 +19,7 @@ class BinaryFile(object):
             self._file.seek(pos)
             return self._file.read(1)
 
-    def readRange(self,start,end):
+    def readRange(self,start,end):        
         if self.fileAccess=="memory":
             return self_.data[start:end]
         elif self.fileAccess=="file":
@@ -73,8 +73,16 @@ class MUMFile(BinaryFile):
 
     def readRange(self,startIndex,endIndex):
         records=[]
-        for i in xrange(startIndex,endIndex):
-            records.append(self.readIndex(i))
+        if self.fileAccess == "memory":
+            for i in xrange(startIndex,endIndex):
+                records.append(self.readIndex(i))
+        elif self.fileAccess=="file":
+            pos=ctypes.sizeof(MUM_CData)*startIndex
+            self._file.seek(pos)
+            for i in range(startIndex,endIndex):
+                data=MUM_CData()
+                self._file.readinto(data)
+                records.append(data)
         return records
 
     def getNumberOfMUMs(self):
@@ -106,8 +114,16 @@ class PairFile(BinaryFile):
 
     def readRange(self,startIndex,endIndex):
         records=[]
-        for i in xrange(startIndex,endIndex):
-            records.append(self.readIndex(i))
+        if self.fileAccess == "memory":
+            for i in xrange(startIndex,endIndex):
+                records.append(self.readIndex(i))
+        elif self.fileAccess=="file":
+            pos=ctypes.sizeof(Pair_CData)*startIndex
+            self._file.seek(pos)
+            for i in range(startIndex,endIndex):
+                data=Pair_CData()
+                self._file.readinto(data)
+                records.append(data)
         return records
 
     def getNumberOfPairs(self):
@@ -139,11 +155,18 @@ class IndexFile(BinaryFile):
 
     def readRange(self,startIndex,endIndex):
         records=[]
-        for i in xrange(startIndex,endIndex):
-            records.append(self.readIndex(i))
+        if self.fileAccess == "memory":
+            for i in xrange(startIndex,endIndex):
+                records.append(self.readIndex(i))
+        elif self.fileAccess=="file":
+            pos=ctypes.sizeof(Index_CData)*startIndex
+            self._file.seek(pos)
+            for i in range(startIndex,endIndex):
+                data=Index_CData()
+                self._file.readinto(data)
+                records.append(data)
         return records
 
-    
 
 class IndexSearch(object):
     '''
@@ -211,8 +234,16 @@ class BasesFile(BinaryFile):
 
     def readRange(self,startIndex,endIndex):
         records=[]
-        for i in xrange(startIndex,endIndex):
-            records.append(self.readIndex(i))
+        if self.fileAccess == "memory":
+            for i in xrange(startIndex,endIndex):
+                records.append(self.readIndex(i))
+        elif self.fileAccess=="file":
+            pos=ctypes.sizeof(Bases_CData)*startIndex
+            self._file.seek(pos)
+            for i in range(startIndex,endIndex):
+                data=Bases_CData()
+                self._file.readinto(data)
+                records.append(data)
         return records
 
 class ExtraBases_CData(ctypes.Structure):
@@ -233,9 +264,18 @@ class ExtraBasesFile(BinaryFile):
 
     def readRange(self,startIndex,endIndex):
         records=[]
-        for i in xrange(startIndex,endIndex):
-            records.append(self.readIndex(i))
+        if self.fileAccess == "memory":
+            for i in xrange(startIndex,endIndex):
+                records.append(self.readIndex(i))
+        elif self.fileAccess=="file":
+            pos=ctypes.sizeof(ExtraBases_CData)*startIndex
+            self._file.seek(pos)
+            for i in range(startIndex,endIndex):
+                data=ExtraBases_CData()
+                self._file.readinto(data)
+                records.append(data)
         return records
+        
 
 class AllBases(object):
     def __init__(self,mamsDBDir,fileAccess="file"):
@@ -456,10 +496,9 @@ class MamsDB:
     def getNumMams(self):
         return self.mums.getNumberOfMUMs()
 
-    def buildPair(self,mamSortI):
-        indexData=self.index.readIndex(mamSortI)
+    def buildPair(self,indexData):
         pair = self.pairs.readIndex(indexData.pair_index)
-        mumIndex = pair.mums_start+indexData.mum_index
+        mumIndex = indexData.mum_index
 
         read1 = MamRead(self,indexData.pair_index,1,pair.read_1_length,pair.dupe)
         read2 = MamRead(self,indexData.pair_index,2,pair.read_2_length,pair.dupe)
@@ -469,9 +508,7 @@ class MamsDB:
 
         theMam=None
         # create a mam object for each mum associated with the read and link them together
-        for mIndex in xrange(pair.mums_start,self.getMumStop(indexData.pair_index)):
-
-            mum = self.mums.readIndex(mIndex)
+        for mIndex,mum in enumerate(self.mums.readRange(pair.mums_start,self.getMumStop(indexData.pair_index))):
 
             mam = MAM()
             mam.rp = mum.offset 
@@ -479,7 +516,7 @@ class MamsDB:
             mam.chPos = mum.position-1
             mam.ln = mum.length
             mam.st = "-" if mum.flipped else '+'
-            mam.mamI = mIndex
+            mam.mamI = pair.mums_start+mumIndex
 
             mam.read = read2 if mum.read_2 else read1
             mam.read.mams.append(mam)
@@ -497,8 +534,8 @@ class MamsDB:
         startIndex=bisect.bisect_left(toSearch,startMum)
         endIndex=bisect.bisect_left(toSearch,endMum)
 
-        for i in xrange(startIndex, endIndex):
-            read1,read2,mam = self.buildPair(i)
+        for indexData in self.index.readRange(startIndex, endIndex):
+            read1,read2,mam = self.buildPair(indexData)
             yield mam
 
 
