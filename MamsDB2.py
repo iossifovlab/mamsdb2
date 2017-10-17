@@ -7,9 +7,13 @@ class BinaryFile(object):
         self.fileName=fileName
         self.fileAccess=fileAccess
         self._file=open(fileName,'rb')
-        if fileAccess=="memory":
-            self._data=bytearray(os.path.getsize(fileName))
-            self._file.readinto(self._data)
+        if fileAccess=="memory":           
+            chunkSize=1024*1024*10
+            self._data=bytearray()
+            data=self._file.read(chunkSize)
+            while data!="":
+                self._data.extend(data)
+                data=self._file.read(chunkSize)
             self._file.close()
 
     def readIndex(self,pos):
