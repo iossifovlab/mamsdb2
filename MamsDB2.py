@@ -36,6 +36,34 @@ class BinaryFile(object):
         elif self.fileAccess=="file":
             self._file.close()
 
+class BinaryCDataFile(BinaryFile):
+    '''
+    A binary data file where each record is defined by a ctypes Structure class
+    '''
+    def __init__(self,fileName,cDataClass,fileAccess="file"):
+        BinaryFile.__init__(self,fileName,fileAccess)
+        self.cDataClass=cDataClass
+        self.sizeOfRecord=ctypes.sizeof(self.cDataClass)
+        self.numRecords=os.path.getsize(self.fileName)/ctypes.sizeof(self.cDataClass)
+
+    def readIndex(self,index):
+        pos=self.sizeOfRecord*index
+        if self.fileAccess=="memory":
+            data=self.cDataClass.from_buffer(self._data,pos)
+        elif self.fileAccess=="file":
+            data=self.cDataClass()       
+            self._file.seek(pos)
+            self._file.readinto(data)            
+
+        return data
+
+    def readRange(self,startIndex,endIndex):
+        records=[]
+        for i in xrange(startIndex,endIndex):
+            records.append(self.readIndex(i))
+        return records
+        
+
 class MUM_CData(ctypes.Structure):
     _fields_=[
         ("position",ctypes.c_uint64,32),
@@ -63,34 +91,6 @@ class MUM_CData(ctypes.Structure):
         else:
             return False
 
-class MUMFile(BinaryFile):
-    def readIndex(self,index):
-        pos=ctypes.sizeof(MUM_CData)*index        
-        if self.fileAccess=="memory":
-            data=MUM_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":            
-            data=MUM_CData()
-            self._file.seek(pos)
-            self._file.readinto(data)
-        
-        return data
-
-    def readRange(self,startIndex,endIndex):
-        records=[]
-        if self.fileAccess == "memory":
-            for i in xrange(startIndex,endIndex):
-                records.append(self.readIndex(i))
-        elif self.fileAccess=="file":
-            pos=ctypes.sizeof(MUM_CData)*startIndex
-            self._file.seek(pos)
-            for i in range(startIndex,endIndex):
-                data=MUM_CData()
-                self._file.readinto(data)
-                records.append(data)
-        return records
-
-    def getNumberOfMUMs(self):
-        return os.path.getsize(self.fileName)/ctypes.sizeof(MUM_CData)
 
 class Pair_CData(ctypes.Structure):
     _fields_=[
@@ -102,36 +102,6 @@ class Pair_CData(ctypes.Structure):
         ("has_mums",ctypes.c_uint64,1),
         ("dupe",ctypes.c_uint64,1)
     ]
-
-class PairFile(BinaryFile):
-    def readIndex(self,index):
-        pos=ctypes.sizeof(Pair_CData)*index
-
-        if self.fileAccess=="memory":
-            data=Pair_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
-            data=Pair_CData()
-            self._file.seek(pos)
-            self._file.readinto(data)
-        
-        return data
-
-    def readRange(self,startIndex,endIndex):
-        records=[]
-        if self.fileAccess == "memory":
-            for i in xrange(startIndex,endIndex):
-                records.append(self.readIndex(i))
-        elif self.fileAccess=="file":
-            pos=ctypes.sizeof(Pair_CData)*startIndex
-            self._file.seek(pos)
-            for i in range(startIndex,endIndex):
-                data=Pair_CData()
-                self._file.readinto(data)
-                records.append(data)
-        return records
-
-    def getNumberOfPairs(self):
-        return os.path.getsize(self.fileName)/ctypes.sizeof(Pair_CData)
 
 
 class Index_CData(ctypes.Structure):
@@ -145,33 +115,6 @@ class Index_CData(ctypes.Structure):
         ("filler",ctypes.c_uint64,2)
     ]
 
-class IndexFile(BinaryFile):
-    def readIndex(self,index):
-        pos=ctypes.sizeof(Index_CData)*index
-        if self.fileAccess=="memory":
-            data=Index_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
-            data=Index_CData()
-            self._file.seek(pos)
-            self._file.readinto(data)
-        
-        return data
-
-    def readRange(self,startIndex,endIndex):
-        records=[]
-        if self.fileAccess == "memory":
-            for i in xrange(startIndex,endIndex):
-                records.append(self.readIndex(i))
-        elif self.fileAccess=="file":
-            pos=ctypes.sizeof(Index_CData)*startIndex
-            self._file.seek(pos)
-            for i in range(startIndex,endIndex):
-                data=Index_CData()
-                self._file.readinto(data)
-                records.append(data)
-        return records
-
-
 class IndexSearch(object):
     '''
     Binary Search of mums by chromosome and position. Implements a list interface so that it is compatible with the bisect method.
@@ -182,7 +125,7 @@ class IndexSearch(object):
         self.pairsFile=pairsFile
 
     def __len__(self):
-        return os.path.getsize(self.indexFile.fileName)/ctypes.sizeof(Index_CData)
+        return self.indexFile.numRecords
 
     def __getitem__(self,index):
         '''
@@ -223,68 +166,14 @@ class Bases_CData(ctypes.Structure):
         return self.fileData & data_bits
         
 
-class BasesFile(BinaryFile):
-    def readIndex(self,index):
-        pos=ctypes.sizeof(Bases_CData)*index
-
-        if self.fileAccess=="memory":
-            data=Bases_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
-            data=Bases_CData()
-            self._file.seek(pos)
-            self._file.readinto(data)
-        
-        return data
-
-    def readRange(self,startIndex,endIndex):
-        records=[]
-        if self.fileAccess == "memory":
-            for i in xrange(startIndex,endIndex):
-                records.append(self.readIndex(i))
-        elif self.fileAccess=="file":
-            pos=ctypes.sizeof(Bases_CData)*startIndex
-            self._file.seek(pos)
-            for i in range(startIndex,endIndex):
-                data=Bases_CData()
-                self._file.readinto(data)
-                records.append(data)
-        return records
-
 class ExtraBases_CData(ctypes.Structure):
     _fields_=[("data",ctypes.c_uint64)]
 
-class ExtraBasesFile(BinaryFile):
-    def readIndex(self,index):
-        pos=ctypes.sizeof(ExtraBases_CData)*index
-
-        if self.fileAccess=="memory":
-            data=ExtraBases_CData.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
-            data=ExtraBases_CData()
-            self._file.seek(pos)
-            self._file.readinto(data)
-        
-        return data
-
-    def readRange(self,startIndex,endIndex):
-        records=[]
-        if self.fileAccess == "memory":
-            for i in xrange(startIndex,endIndex):
-                records.append(self.readIndex(i))
-        elif self.fileAccess=="file":
-            pos=ctypes.sizeof(ExtraBases_CData)*startIndex
-            self._file.seek(pos)
-            for i in range(startIndex,endIndex):
-                data=ExtraBases_CData()
-                self._file.readinto(data)
-                records.append(data)
-        return records
-        
 
 class AllBases(object):
     def __init__(self,mamsDBDir,fileAccess="file"):
-        self.bases=BasesFile(os.path.join(mamsDBDir,"bases.bin"))
-        self.extraBases=ExtraBasesFile(os.path.join(mamsDBDir,"bases.extra.bin"))
+        self.bases=BinaryCDataFile(os.path.join(mamsDBDir,"bases.bin"),Bases_CData,fileAccess)
+        self.extraBases=BinaryCDataFile(os.path.join(mamsDBDir,"bases.extra.bin"),ExtraBases_CData,fileAccess)
 
     def getBases(self,pairIndex):
         baseData=self.bases.readIndex(pairIndex)
@@ -480,9 +369,9 @@ class MAM(object):
         
 class MamsDB:
     def __init__(self,mamsDBDir,fileAccess="file"):
-        self.mums=MUMFile(os.path.join(mamsDBDir,"mums.bin"),fileAccess)
-        self.pairs=PairFile(os.path.join(mamsDBDir,"pairs.bin"),fileAccess)
-        self.index=IndexFile(os.path.join(mamsDBDir,"index.bin"),fileAccess)
+        self.mums=BinaryCDataFile(os.path.join(mamsDBDir,"mums.bin"),MUM_CData,fileAccess)
+        self.pairs=BinaryCDataFile(os.path.join(mamsDBDir,"pairs.bin"),Pair_CData,fileAccess)
+        self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,fileAccess)
         self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
         self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
         self.bases= AllBases(mamsDBDir,fileAccess)
@@ -495,10 +384,10 @@ class MamsDB:
         self.mpb.close()
 
     def getNumReads(self):
-        return 2*self.pairs.getNumberOfPairs()
+        return 2*self.pairs.numRecords
 
     def getNumMams(self):
-        return self.mums.getNumberOfMUMs()
+        return self.mums.numRecords
 
     def buildPair(self,indexData):
         pair = self.pairs.readIndex(indexData.pair_index)
@@ -567,8 +456,8 @@ class MamsDB:
         '''
         
         # handle case where pair is the last pair in the file
-        if pairIndex+1 == self.pairs.getNumberOfPairs():
-            return self.mums.getNumberOfMUMs()
+        if pairIndex+1 == self.pairs.numRecords:
+            return self.mums.numRecords
         else:
             nextPair=self.pairs.readIndex(pairIndex+1)
             return nextPair.mums_start
