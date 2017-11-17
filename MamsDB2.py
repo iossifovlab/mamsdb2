@@ -1,19 +1,15 @@
+
 import os,struct,array,ctypes
 import bisect
-import pdb
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
         self.fileName=fileName
         self.fileAccess=fileAccess
         self._file=open(fileName,'rb')
-        if fileAccess=="memory":           
-            chunkSize=1024*1024*10
-            self._data=bytearray()
-            data=self._file.read(chunkSize)
-            while data!="":
-                self._data.extend(data)
-                data=self._file.read(chunkSize)
+        if fileAccess=="memory":
+            self._data=bytearray(os.path.getsize(self.fileName))
+            self._file.readinto(self._data)
             self._file.close()
 
     def readIndex(self,pos):
