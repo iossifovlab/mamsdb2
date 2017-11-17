@@ -285,7 +285,16 @@ class Reference(object):
         return self._seqF.readRange(absBeg,absEnd)
 
 
-
+class lazy_property(object):
+    def __init__(self,fget):
+        self.fget = fget
+        self.func_name = fget.__name__
+    def __get__(self,obj,cls):
+        if obj is None:
+            return None
+        value = self.fget(obj)
+        setattr(obj,self.func_name,value)
+        return value
 
 class MamRead:
     def __init__(self,mamsDB,pairI,readN,len,isPCRdup):
@@ -302,6 +311,10 @@ class MamRead:
         return self.mamsDB.getSequence(self.pairI)[self.readN-1]
 
 class MAM(object):
+    def __init__(self,cData,mamI,read):
+        self.cData=cData
+        self.mamI=mamI
+        self.read=read
     
     def __repr__(self):
         return (self.rp,self.ch,self.chPos,self.ln,self.st).__repr__()
@@ -316,7 +329,28 @@ class MAM(object):
             return False
 
     def __neq__(self,other):
-        return not self.__eq__(other)        
+        return not self.__eq__(other)
+
+    # converting between cData types and python data types is expensive, only do it when necessary.
+    @lazy_property
+    def rp(self):
+        return self.cData.offset
+
+    @lazy_property
+    def ch(self):
+        return self.read.mamsDB.ref.name(self.cData.chromosome)
+
+    @lazy_property
+    def chPos(self):
+        return self.cData.position-1
+
+    @lazy_property
+    def ln(self):
+        return self.cData.length
+
+    @lazy_property
+    def st(self):
+        return "-" if self.cData.flipped else '+'
 
     @property
     def chBegPos(self):
@@ -386,28 +420,25 @@ class MamsDB:
         return self.mums.numRecords
 
     def buildPair(self,indexData):
-        pair = self.pairs.readIndex(indexData.pair_index)
+        pair_index=indexData.pair_index        
+        pair = self.pairs.readIndex(pair_index)
+        mums_start=pair.mums_start
+        
         mumIndex = indexData.mum_index
 
-        read1 = MamRead(self,indexData.pair_index,1,pair.read_1_length,pair.dupe)
-        read2 = MamRead(self,indexData.pair_index,2,pair.read_2_length,pair.dupe)
+        read1 = MamRead(self,pair_index,1,pair.read_1_length,pair.dupe)
+        read2 = MamRead(self,pair_index,2,pair.read_2_length,pair.dupe)
 
         read1.mateRead = read2
         read2.mateRead = read1
 
         theMam=None
         # create a mam object for each mum associated with the read and link them together
-        for mIndex,mum in enumerate(self.mums.readRange(pair.mums_start,self.getMumStop(indexData.pair_index))):
-
-            mam = MAM()
-            mam.rp = mum.offset 
-            mam.ch = self.ref.name(mum.chromosome)
-            mam.chPos = mum.position-1
-            mam.ln = mum.length
-            mam.st = "-" if mum.flipped else '+'
-            mam.mamI = pair.mums_start+mumIndex
-
-            mam.read = read2 if mum.read_2 else read1
+        for mIndex,mum in enumerate(self.mums.readRange(mums_start,self.getMumStop(pair_index))):
+            mamI = mums_start+mumIndex
+            read = read2 if mum.read_2 else read1
+            mam = MAM(mum,mamI,read)
+            
             mam.read.mams.append(mam)
             if mIndex==mumIndex:
                 theMam=mam
