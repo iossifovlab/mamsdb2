@@ -1,6 +1,7 @@
 
 import os,struct,array,ctypes
 import bisect
+import mmap
 
 class BinaryFile(object):
     def __init__(self,fileName,fileAccess="file"):
@@ -8,7 +9,8 @@ class BinaryFile(object):
         self.fileAccess=fileAccess
         self._file=open(fileName,'rb')
         if fileAccess=="memory":
-            self._data=bytearray(os.path.getsize(self.fileName))
+            # create an anonymous mmap so the data can be shared across multiple processes
+            self._data=mmap.mmap(-1,os.path.getsize(self.fileName))
             self._file.readinto(self._data)
             self._file.close()
 
@@ -342,7 +344,7 @@ class MAM(object):
 
     @lazy_property
     def chPos(self):
-        return self.cData.position-1
+        return self.cData.position
 
     @lazy_property
     def ln(self):
@@ -435,7 +437,7 @@ class MamsDB:
         theMam=None
         # create a mam object for each mum associated with the read and link them together
         for mIndex,mum in enumerate(self.mums.readRange(mums_start,self.getMumStop(pair_index))):
-            mamI = mums_start+mumIndex
+            mamI = mums_start+mIndex
             read = read2 if mum.read_2 else read1
             mam = MAM(mum,mamI,read)
             
