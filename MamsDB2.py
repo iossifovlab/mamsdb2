@@ -14,15 +14,18 @@ class BinaryFile(object):
             self._file.readinto(self._data)
             self._file.close()
 
+        elif fileAccess=="mmap":
+            self._data=mmap.mmap(self._file.fileno(),0,prot=mmap.PROT_READ)
+
     def readIndex(self,pos):
-        if self.fileAccess=="memory":
+        if self.fileAccess=="memory" or self.fileAccess=="mmap":
             return self_.data[pos]
         elif self.fileAccess=="file":
             self._file.seek(pos)
             return self._file.read(1)
 
     def readRange(self,start,end):        
-        if self.fileAccess=="memory":
+        if self.fileAccess=="memory" or self.fileAccess=="mmap":
             return self_.data[start:end]
         elif self.fileAccess=="file":
             self._file.seek(start)
@@ -31,7 +34,10 @@ class BinaryFile(object):
     def close(self):
         if self.fileAccess=="memory":
             self._data=None
-        elif self.fileAccess=="file":
+        elif self.fileAccess=="file":            
+            self._file.close()
+        elif self.fileAccess=="mmap":
+            self._data.close()
             self._file.close()
 
 class BinaryCDataFile(BinaryFile):
@@ -46,7 +52,7 @@ class BinaryCDataFile(BinaryFile):
 
     def readIndex(self,index):
         pos=self.sizeOfRecord*index
-        if self.fileAccess=="memory":
+        if self.fileAccess=="memory" or self.fileAccess=="mmap":
             data=self.cDataClass.from_buffer(self._data,pos)
         elif self.fileAccess=="file":
             data=self.cDataClass()       
@@ -400,13 +406,16 @@ class MAM(object):
 
         
 class MamsDB:
-    def __init__(self,mamsDBDir,fileAccess="file"):
+    def __init__(self,mamsDBDir,fileAccess="mmap"):
         self.mums=BinaryCDataFile(os.path.join(mamsDBDir,"mums.bin"),MUM_CData,fileAccess)
         self.pairs=BinaryCDataFile(os.path.join(mamsDBDir,"pairs.bin"),Pair_CData,fileAccess)
-        self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,fileAccess)
-        self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
-        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
-        self.bases= AllBases(mamsDBDir,fileAccess)
+        # The index takes up a lot of memory and can be used on disk at a reasonable speed. Using the index through mmap instead of loading the whole thing into memory has a performance penalty of roughly 2x, but it decreases memory usage by 1/3.
+        self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,"mmap")
+
+        # These files may or may not be needed to be loaded into memory depending on the query. The ref+mappability take 10GB. The files for the bases takes between 8 and 15GB.
+        self.ref = Reference.createFromMumdexDir(mamsDBDir,"mmap")    
+        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,"mmap")
+        self.bases= AllBases(mamsDBDir,"mmap")
 
     def close(self):
         self.mums.close()
@@ -416,7 +425,7 @@ class MamsDB:
         self.mpb.close()
 
     def getNumReads(self):
-        return 2*self.pairs.numRecords
+        return 2*self.pairs.numRecordsq
 
     def getNumMams(self):
         return self.mums.numRecords
