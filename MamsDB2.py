@@ -54,7 +54,7 @@ class BinaryCDataFile(BinaryFile):
         pos=self.sizeOfRecord*index
         if self.fileAccess=="memory":
             data=self.cDataClass.from_buffer(self._data,pos)
-        elif self.fileAccess=="file":
+        elif self.fileAccess=="file" or self.fileAccess=="mmap":
             data=self.cDataClass()       
             self._file.seek(pos)
             self._file.readinto(data)            
