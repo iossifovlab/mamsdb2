@@ -52,7 +52,7 @@ class BinaryCDataFile(BinaryFile):
 
     def readIndex(self,index):
         pos=self.sizeOfRecord*index
-        if self.fileAccess=="memory" or self.fileAccess=="mmap":
+        if self.fileAccess=="memory":
             data=self.cDataClass.from_buffer(self._data,pos)
         elif self.fileAccess=="file":
             data=self.cDataClass()       
@@ -413,8 +413,8 @@ class MamsDB:
         self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,"mmap")
 
         # These files may or may not be needed to be loaded into memory depending on the query. The ref+mappability take 10GB. The files for the bases takes between 8 and 15GB.
-        self.ref = Reference.createFromMumdexDir(mamsDBDir,"mmap")    
-        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,"mmap")
+        self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
+        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
         self.bases= AllBases(mamsDBDir,"mmap")
 
     def close(self):
