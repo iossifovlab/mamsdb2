@@ -413,8 +413,8 @@ class MamsDB:
         self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,"mmap")
 
         # These files may or may not be needed to be loaded into memory depending on the query. The ref+mappability take 10GB. The files for the bases takes between 8 and 15GB.
-        self.ref = Reference.createFromMumdexDir(mamsDBDir,fileAccess)    
-        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,fileAccess)
+        self.ref = Reference.createFromMumdexDir(mamsDBDir,"mmap")    
+        self.mpb = Mappability.createFromMumdexDir(mamsDBDir,"mmap")
         self.bases= AllBases(mamsDBDir,"mmap")
 
     def close(self):
@@ -551,3 +551,54 @@ class MamsDB:
         return results
                         
                     
+class NODE(object):
+    DRevMap = { "o+":"i-", "o-":"i+", "i+":"o-", "i-":"o+" }
+    def __init__(nd,mam,OI):
+        nd.ref=mam.read.mamsDB.ref
+        nd.mam = mam
+        if OI == 'o':
+            nd.P = mam.chEndPos
+        else:
+            nd.P = mam.chBegPos
+        nd.PA = nd.ref.CP2APos(mam.ch,nd.P)
+        nd.D = OI + mam.st
+        nd.TS = mam.ln
+    def __repr__(nd):
+        return "NODE" + (nd.mam.ch,nd.P,nd.D,nd.TS).__repr__()
+
+    # getMOUTIndex and getMINIndex are slow now that MOUT and MIN are stored on disk to conserve memory to enable use of the VM, so only call them when they are needed as a lazy_property.
+    @lazy_property
+    def US(nd):
+        if nd.D in {'o+', 'i-'}:
+            return nd.TS - nd.ref.getMOUTIndex(nd.PA)
+        else:
+            return nd.TS - nd.ref.getMINIndex(nd.PA)
+
+    def rev(nd):
+        nd.D = NODE.DRevMap[nd.D]
+
+class GSTICH(object):
+    def __init__(self,tN,fN,I):
+        self.fN = fN 
+        self.tN = tN 
+        self.I = I
+
+    @lazy_property
+    def stchStr(self):
+        return "%s:%s:%d->%s:%s:%d" % (self.fN.D,self.fN.mam.ch,self.fN.P,self.tN.D,self.tN.mam.ch,self.tN.P)
+
+stSgnM = {'+':1, '-':-1}
+def invariant(m1,m2):
+    if m1.rp > m2.rp:
+        m1,m2 = m2,m1
+
+    I = stSgnM[m1.st]*m1.rBegAPos - stSgnM[m2.st]*m2.rBegAPos    
+    f = NODE(m1,'o')
+    t = NODE(m2,'i')
+
+    if f.P > t.P:
+        f,t = t,f
+        f.rev()
+        t.rev()
+
+    return GSTICH(t,f,I) 
