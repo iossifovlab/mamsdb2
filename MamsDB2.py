@@ -261,11 +261,9 @@ class MAM(object):
         return (self.rp,self.ch,self.chPos,self.ln,self.st).__repr__()
 
     def __hash__(self):
-        return hash((self.read.readI,self.mamI))
+        return hash((self.rp,self.ch,self.chPos,self.ln,self.st))
 
     def __eq__(self,other):
-        if self.read.readI!=other.read.readI:
-            return False
         if (self.rp,self.ch,self.chPos,self.ln,self.st)==(other.rp,other.ch,other.chPos,other.ln,other.st):
             return True
         else:
