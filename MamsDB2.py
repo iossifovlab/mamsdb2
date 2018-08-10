@@ -393,7 +393,11 @@ class MamsDB:
     def getMams(self,chr,beg,end):
         chromInt=self.ref.chromToIndex(chr)
         toSearch=IndexSearch(self.index,self.mums,self.pairs)
-        startMum=MUM_CData(position=beg-150,chromosome=chromInt)
+        if beg<150:
+            startPos=0
+        else:
+            startPos=beg-150
+        startMum=MUM_CData(position=startPos,chromosome=chromInt)
         endMum=MUM_CData(position=end,chromosome=chromInt)
         startIndex=bisect.bisect_left(toSearch,startMum)
         endIndex=bisect.bisect_left(toSearch,endMum)
