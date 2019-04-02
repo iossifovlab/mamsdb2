@@ -16,14 +16,14 @@ class BinaryFile(object):
 
     def readIndex(self,pos):
         if self.fileAccess=="memory" or self.fileAccess=="mmap":
-            return self_.data[pos]
+            return self._data[pos]
         elif self.fileAccess=="file":
             self._file.seek(pos)
             return self._file.read(1)
 
     def readRange(self,start,end):        
         if self.fileAccess=="memory" or self.fileAccess=="mmap":
-            return self_.data[start:end]
+            return self._data[start:end]
         elif self.fileAccess=="file":
             self._file.seek(start)
             return self._file.read(end-start)

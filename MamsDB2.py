@@ -343,7 +343,7 @@ class MamsDB:
         self.mums=BinaryCDataFile(os.path.join(mamsDBDir,"mums.bin"),MUM_CData,fileAccess)
         self.pairs=BinaryCDataFile(os.path.join(mamsDBDir,"pairs.bin"),Pair_CData,fileAccess)
         # The index takes up a lot of memory and can be used on disk at a reasonable speed. Using the index through mmap instead of loading the whole thing into memory has a performance penalty of roughly 2x, but it decreases memory usage by 1/3.
-        self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,"mmap")
+        self.index=BinaryCDataFile(os.path.join(mamsDBDir,"index.bin"),Index_CData,fileAccess)
 
         # These files may or may not be needed to be loaded into memory depending on the query. The ref+mappability take 10GB. The files for the bases takes between 8 and 15GB.
         self.ref = Reference.createFromMumdexDir(mamsDBDir,"mmap")    
@@ -393,10 +393,10 @@ class MamsDB:
     def getMams(self,chr,beg,end):
         chromInt=self.ref.chromToIndex(chr)
         toSearch=IndexSearch(self.index,self.mums,self.pairs)
-        if beg<150:
+        if beg<0:
             startPos=0
         else:
-            startPos=beg-150
+            startPos=beg
         startMum=MUM_CData(position=startPos,chromosome=chromInt)
         endMum=MUM_CData(position=end,chromosome=chromInt)
         startIndex=bisect.bisect_left(toSearch,startMum)
