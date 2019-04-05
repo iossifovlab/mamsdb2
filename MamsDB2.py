@@ -162,10 +162,10 @@ class Mappability(object):
         self._highF=BinaryFile(self._highFN,fileAccess)
         self.fasta=fasta_name
 
-    def low(pos):
+    def low(self,pos):
         return struct.unpack("B",self._lowF.readIndex(pos))
 
-    def high(pos):
+    def high(self,pos):
         return struct.unpack("B",self._highF.readIndex(pos))
 
     @staticmethod
@@ -414,16 +414,16 @@ class MamsDB:
         else:
             eA = bA + 1
             
-        return [self.mpb.low_map(i) for i in xrange(bA+1,eA+1)]
+        return [self.mpb.low(i) for i in xrange(bA+1,eA+1)]
 
-    def high_map(self,ch,b,e):
+    def high_map(self,ch,b,e=None):
         bA = self.ref.CP2APos(ch,b)
         if e:
             eA =  self.ref.CP2APos(ch,e)
         else:
             eA = bA + 1
             
-        return [self.mpb.high_map(i) for i in xrange(bA+1,eA+1)]
+        return [self.mpb.high(i) for i in xrange(bA+1,eA+1)]
 
     def getMumStop(self,pairIndex):
         '''
