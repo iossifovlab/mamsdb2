@@ -136,13 +136,18 @@ class AllBases(object):
         result=bytearray()
         # in the extra base file characters can potentially span accross to integers, so we must read in the characters one bit at a time.
         base_index=startIndex
+        last_word_index=None
         while True:
-            baseBits=0           
+            baseBits=0
+            last_word_index=None
             for bit in range(0,3):                
                 bit_index=base_index * 3 + bit
                 word_index=bit_index/64
+                # reading data from the binary file is slow, so only read data when we have to
+                if word_index!=last_word_index:            
+                    word=self.extraBases.readIndex(word_index).data
+                    last_word_index=word_index
                 bit_in_word_index=bit_index%64
-                word=self.extraBases.readIndex(word_index).data
                 baseBits |= (((word >> bit_in_word_index) & 1) << bit)
                     
             base=IntToBaseMap[baseBits]
@@ -150,6 +155,7 @@ class AllBases(object):
                 return str(result)
             result.append(base)
             base_index+=1    
+
 
 class Mappability(object):
     def __init__(self,fasta_name,fileAccess="file"):
@@ -249,7 +255,7 @@ class MamRead:
         self.mateRead = None
  
     def seq(self):
-        return self.mamsDB.getSequence(self.pairI)[self.readN-1]
+        return self.mamsDB.getSequence(self.pairI,self.readN-1)
 
 class MAM(object):
     def __init__(self,cData,mamI,read):
@@ -348,7 +354,7 @@ class MamsDB:
         # These files may or may not be needed to be loaded into memory depending on the query. The ref+mappability take 10GB. The files for the bases takes between 8 and 15GB.
         self.ref = Reference.createFromMumdexDir(mamsDBDir,"mmap")    
         self.mpb = Mappability.createFromMumdexDir(mamsDBDir,"mmap")
-        self.bases= AllBases(mamsDBDir,"mmap")
+        self.bases= AllBases(mamsDBDir,fileAccess)
 
     def close(self):
         self.mums.close()
@@ -358,7 +364,7 @@ class MamsDB:
         self.mpb.close()
 
     def getNumReads(self):
-        return 2*self.pairs.numRecordsq
+        return 2*self.pairs.numRecords
 
     def getNumMams(self):
         return self.mums.numRecords
@@ -390,6 +396,22 @@ class MamsDB:
 
         return read1,read2,theMam
 
+    def buildReads(self,pair_index):
+        pair = self.pairs.readIndex(pair_index)
+        mums_start=pair.mums_start
+        read1 = MamRead(self,pair_index,1,pair.read_1_length,pair.dupe)
+        read2 = MamRead(self,pair_index,2,pair.read_2_length,pair.dupe)
+        read1.mateRead = read2
+        read2.mateRead = read1
+
+        for mIndex,mum in enumerate(self.mums.readRange(mums_start,self.getMumStop(pair_index))):
+            mamI = mums_start+mIndex
+            read = read2 if mum.read_2 else read1
+            mam = MAM(mum,mamI,read)            
+            read.mams.append(mam)
+
+        return read1,read2
+
     def getMams(self,chr,beg,end):
         chromInt=self.ref.chromToIndex(chr)
         toSearch=IndexSearch(self.index,self.mums,self.pairs)
@@ -401,11 +423,34 @@ class MamsDB:
         endMum=MUM_CData(position=end,chromosome=chromInt)
         startIndex=bisect.bisect_left(toSearch,startMum)
         endIndex=bisect.bisect_left(toSearch,endMum)
-
         for indexData in self.index.readRange(startIndex, endIndex):
             read1,read2,mam = self.buildPair(indexData)
             yield mam
 
+    def getReads(self,chr,beg,end):
+        chromInt=self.ref.chromToIndex(chr)
+        toSearch=IndexSearch(self.index,self.mums,self.pairs)
+        if beg<0:
+            startPos=0
+        else:
+            startPos=beg
+        startMum=MUM_CData(position=startPos,chromosome=chromInt)
+        endMum=MUM_CData(position=end,chromosome=chromInt)
+        startIndex=bisect.bisect_left(toSearch,startMum)
+        endIndex=bisect.bisect_left(toSearch,endMum)
+        uniquePairs=set()
+        for indexData in self.index.readRange(startIndex, endIndex):
+            if indexData.pair_index not in uniquePairs:
+                uniquePairs.add(indexData.pair_index)
+                read1,read2=self.buildReads(indexData.pair_index)
+                for mam in read1.mams:
+                    if beg<=mam.chPos<=end:
+                        yield read1
+                        break
+                for mam in read2.mams:
+                    if beg<=mam.chPos<=end:
+                        yield read2
+                        break
 
     def low_map(self,ch,b,e=None):
         bA = self.ref.CP2APos(ch,b)
@@ -437,55 +482,50 @@ class MamsDB:
             nextPair=self.pairs.readIndex(pairIndex+1)
             return nextPair.mums_start
 
-    def getSequence(self,pairIndex):
+    def getSequence(self,pairIndex,readNum):
         '''
-        given a read pair index, get the sequence data associated with each pair.
+        given a read pair index and a pair number, get the sequence data associated with the read. The pair number should be 0 or 1.
         '''
 
         extra_bases=self.bases.getBases(pairIndex)
         extraBaseIndex=0
         pair=self.pairs.readIndex(pairIndex)
-        results=[]
 
-        for readNum in range(0,2):
-            read_index=0
-            length=0
-            read=bytearray()
-            for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
-                mum=self.mums.readIndex(mum_index)
-                if mum.read_2 != readNum:
-                    continue
-                offset=mum.offset
-                while read_index<offset:
-                    read.append(extra_bases[extraBaseIndex])
-                    extraBaseIndex+=1
-                    read_index+=1
-
-                while read_index < offset+mum.length:
-                    chrom=self.ref.name(mum.chromosome)
-                    if mum.flipped:                        
-                        mumChromPos=mum.position+offset+mum.length-read_index-1
-                        read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
-                    else:
-                        mumChromPos=mum.position+read_index-offset
-                        read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
-
-                    read_index+=1
-
-                if readNum:
-                    length=pair.read_1_length
-                else:
-                    length=pair.read_2_length
-
-            while read_index < length:
+        read_index=0
+        length=0
+        read=bytearray()
+        for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
+            mum=self.mums.readIndex(mum_index)
+            if mum.read_2 != readNum:
+                continue
+            offset=mum.offset
+            while read_index<offset:
                 read.append(extra_bases[extraBaseIndex])
                 extraBaseIndex+=1
                 read_index+=1
 
-            results.append(str(read))
+            while read_index < offset+mum.length:
+                chrom=self.ref.name(mum.chromosome)
+                if mum.flipped:                        
+                    mumChromPos=mum.position+offset+mum.length-read_index-1
+                    read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
+                else:
+                    mumChromPos=mum.position+read_index-offset
+                    read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
 
-            
-        return results
+                read_index+=1
+
+            if readNum:
+                length=pair.read_1_length
+            else:
+                length=pair.read_2_length
+
+        while read_index < length:
+            read.append(extra_bases[extraBaseIndex])
+            extraBaseIndex+=1
+            read_index+=1
+
+        return str(read)
                         
                     
 class NODE(object):
