@@ -299,47 +299,47 @@ class MAM(object):
     def st(self):
         return "-" if self.cData.flipped else '+'
 
-    @property
+    @lazy_property
     def chBegPos(self):
         if self.st == '+':
             return self.chPos
         else:
             return self.chPos + self.ln - 1
 
-    @property
+    @lazy_property
     def chEndPos(self):
         if self.st == '+':
             return self.chPos + self.ln - 1
         else:
             return self.chPos
 
-    @property
+    @lazy_property
     def rBegChPos(self):
         if self.st == '+':
             return self.chPos-self.rp
         else:
             return self.chPos + self.ln - 1 + self.rp
 
-    @property
+    @lazy_property
     def rEndChPos(self):
         if self.st == '+':
             return self.chPos-self.rp+self.read.readLen-1
         else:
             return self.chPos+self.ln+self.rp-self.read.readLen
 
-    @property
+    @lazy_property
     def rBegAPos(self):
         return self.read.mamsDB.ref.CP2APos(self.ch,self.rBegChPos)
 
-    @property
+    @lazy_property
     def rEndAPos(self):
         return self.read.mamsDB.ref.CP2APos(self.ch,self.rEndChPos)
     
-    @property
+    @lazy_property
     def APos(self):
         return self.read.mamsDB.ref.CP2APos(self.ch,self.chPos)
 
-    @property
+    @lazy_property
     def seq(self):
         return self.read.mamsDB.ref.getS_BL(self.ch,self.chPos,self.ln)
 
@@ -533,17 +533,16 @@ class NODE(object):
     def __init__(nd,mam,OI):
         nd.ref=mam.read.mamsDB.ref
         nd.mam = mam
+        nd.OI=OI
         if OI == 'o':
             nd.P = mam.chEndPos
         else:
             nd.P = mam.chBegPos
-        nd.PA = nd.ref.CP2APos(mam.ch,nd.P)
-        nd.D = OI + mam.st
-        nd.TS = mam.ln
     def __repr__(nd):
         return "NODE" + (nd.mam.ch,nd.P,nd.D,nd.TS).__repr__()
 
-    # getMOUTIndex and getMINIndex are slow now that MOUT and MIN are stored on disk to conserve memory to enable use of the VM, so only call them when they are needed as a lazy_property.
+    # only calculate properties when you need them for performance
+    
     @lazy_property
     def US(nd):
         if nd.D in {'o+', 'i-'}:
@@ -551,8 +550,22 @@ class NODE(object):
         else:
             return nd.TS - nd.ref.getMINIndex(nd.PA)
 
+    @lazy_property
+    def PA(nd):
+        return nd.ref.CP2APos(nd.mam.ch,nd.P)
+
+    @lazy_property
+    def D(nd):
+        return nd.OI + nd.mam.st
+
+    @lazy_property
+    def TS(nd):
+        return nd.mam.ln
+
     def rev(nd):
         nd.D = NODE.DRevMap[nd.D]
+
+        
 
 class GSTICH(object):
     def __init__(self,tN,fN,I):
