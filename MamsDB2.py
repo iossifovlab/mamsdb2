@@ -514,8 +514,8 @@ class MamsDB:
                     read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
 
                 read_index+=1
-
-            if readNum:
+                
+            if readNum==0:
                 length=pair.read_1_length
             else:
                 length=pair.read_2_length
