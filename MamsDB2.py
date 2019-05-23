@@ -254,8 +254,11 @@ class MamRead:
         self.mams = []
         self.mateRead = None
  
-    def seq(self):
-        return self.mamsDB.getSequence(self.pairI,self.readN-1)
+    def getReadseq(self):
+        return self.mamsDB.getSequences(self.pairI)[self.readN-1]
+
+    def getPairSeqs(self):
+        return self.mamsDB.getSequences(self.pairI)
 
 class MAM(object):
     def __init__(self,cData,mamI,read):
@@ -482,50 +485,50 @@ class MamsDB:
             nextPair=self.pairs.readIndex(pairIndex+1)
             return nextPair.mums_start
 
-    def getSequence(self,pairIndex,readNum):
-        '''
-        given a read pair index and a pair number, get the sequence data associated with the read. The pair number should be 0 or 1.
-        '''
-
+    def getSequences(self,pairIndex):
+        # extra bases stores the bases for both read1 and read2 in the pair so it is easiest to get both sequences at the same time
         extra_bases=self.bases.getBases(pairIndex)
         extraBaseIndex=0
         pair=self.pairs.readIndex(pairIndex)
+        results=[]
 
-        read_index=0
-        length=0
-        read=bytearray()
-        for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
-            mum=self.mums.readIndex(mum_index)
-            if mum.read_2 != readNum:
-                continue
-            offset=mum.offset
-            while read_index<offset:
-                read.append(extra_bases[extraBaseIndex])
-                extraBaseIndex+=1
-                read_index+=1
+        for readNum in range(0,2):
+            read_index=0
+            read=bytearray()
+            for mum_index in range(pair.mums_start,self.getMumStop(pairIndex)):
+                mum=self.mums.readIndex(mum_index)
+                if mum.read_2 != readNum:
+                    continue
+                offset=mum.offset
+                while read_index<offset:
+                    read.append(extra_bases[extraBaseIndex])
+                    extraBaseIndex+=1
+                    read_index+=1
 
-            while read_index < offset+mum.length:
-                chrom=self.ref.name(mum.chromosome)
-                if mum.flipped:                        
-                    mumChromPos=mum.position+offset+mum.length-read_index-1
-                    read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
-                else:
-                    mumChromPos=mum.position+read_index-offset
-                    read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
+                while read_index < offset+mum.length:
+                    chrom=self.ref.name(mum.chromosome)
+                    if mum.flipped:                        
+                        mumChromPos=mum.position+offset+mum.length-read_index-1
+                        read.append(Complement[self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1)])
+                    else:
+                        mumChromPos=mum.position+read_index-offset
+                        read.append(self.ref.getSeqChrom(chrom,mumChromPos,mumChromPos+1))
 
-                read_index+=1
-                
+                    read_index+=1
+
             if readNum==0:
                 length=pair.read_1_length
             else:
                 length=pair.read_2_length
 
-        while read_index < length:
-            read.append(extra_bases[extraBaseIndex])
-            extraBaseIndex+=1
-            read_index+=1
+            while read_index < length:
+                read.append(extra_bases[extraBaseIndex])
+                extraBaseIndex+=1
+                read_index+=1
 
-        return str(read)
+            results.append(str(read))
+
+        return results
                         
                     
 class NODE(object):
