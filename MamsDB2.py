@@ -430,7 +430,7 @@ class MamsDB:
             read1,read2,mam = self.buildPair(indexData)
             yield mam
 
-    def getReads(self,chr,beg,end):
+    def getReadPairs(self,chr,beg,end):
         chromInt=self.ref.chromToIndex(chr)
         toSearch=IndexSearch(self.index,self.mums,self.pairs)
         if beg<0:
@@ -446,15 +446,8 @@ class MamsDB:
             if indexData.pair_index not in uniquePairs:
                 uniquePairs.add(indexData.pair_index)
                 read1,read2=self.buildReads(indexData.pair_index)
-                for mam in read1.mams:
-                    if beg<=mam.chPos<=end:
-                        yield read1
-                        break
-                for mam in read2.mams:
-                    if beg<=mam.chPos<=end:
-                        yield read2
-                        break
-
+                yield read1,read2
+                
     def low_map(self,ch,b,e=None):
         bA = self.ref.CP2APos(ch,b)
         if e:
